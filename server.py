@@ -18,6 +18,24 @@ BOOKMARKS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bookm
 WHITEBOARD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'whiteboard.json')
 POMODORO_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pomodoro.json')
 CLIPBOARD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'clipboard.json')
+UI_PREFS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ui_prefs.json')
+
+
+def load_ui_prefs():
+    """通用 UI 偏好（tab 顺序等），跨浏览器/设备共享，不随浏览器缓存清除而丢"""
+    try:
+        with open(UI_PREFS_FILE, 'r', encoding='utf-8') as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_ui_prefs(data):
+    tmp = UI_PREFS_FILE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, UI_PREFS_FILE)
 
 
 def _migrate_items(items):
@@ -1120,6 +1138,8 @@ class ProxyHandler(SimpleHTTPRequestHandler):
             self.handle_get_pomodoro()
         elif parsed.path == '/api/pet-state':
             self.handle_get_pet_state()
+        elif parsed.path == '/api/ui-prefs':
+            self.handle_get_ui_prefs()
         elif parsed.path == '/api/clipboard':
             self.handle_get_clipboard()
         elif parsed.path.startswith('/clipboard_files/'):
@@ -1169,6 +1189,10 @@ class ProxyHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length) if length else b''
             self.handle_save_pet_state(body)
+        elif parsed.path == '/api/ui-prefs':
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length) if length else b''
+            self.handle_save_ui_prefs(body)
         elif parsed.path == '/api/clipboard':
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length) if length else b''
@@ -1432,6 +1456,25 @@ class ProxyHandler(SimpleHTTPRequestHandler):
     def handle_get_pet_state(self):
         """GET /api/pet-state — 桌面宠物轮询番茄钟运行态"""
         self.send_json(200, {"success": True, "data": load_pet_state()})
+
+    def handle_get_ui_prefs(self):
+        """GET /api/ui-prefs — 通用 UI 偏好（tab 顺序等）"""
+        self.send_json(200, {"success": True, "data": load_ui_prefs()})
+
+    def handle_save_ui_prefs(self, body):
+        """POST /api/ui-prefs — 合并保存（只覆盖传入的键），上限 64KB 防滥用"""
+        try:
+            data = json.loads(body.decode('utf-8'))
+        except Exception:
+            self.send_json(400, {"error": "invalid JSON body"})
+            return
+        if not isinstance(data, dict) or len(body) > 64 * 1024:
+            self.send_json(400, {"error": "invalid data"})
+            return
+        merged = load_ui_prefs()
+        merged.update(data)
+        save_ui_prefs(merged)
+        self.send_json(200, {"success": True, "data": merged})
 
     def handle_save_pet_state(self, body):
         """POST /api/pet-state — 前端番茄钟开始/暂停/停止/完成时上报运行态"""

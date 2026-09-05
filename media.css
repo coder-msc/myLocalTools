@@ -227,8 +227,9 @@
         }
         .media-main.player-open.wide-mode .video-grid .video-card { flex: 1 1 220px; }
 
-        /* 网页全屏（B站式）：舞台铺满浏览器视口（非系统全屏），Esc 退出（max-height 需压过宽屏/播放态的钳制规则） */
-        .video-stage.webfs { position: fixed; inset: 0; z-index: 2500; width: 100vw; height: 100vh; max-height: none !important; aspect-ratio: auto; border-radius: 0; }
+        /* 网页全屏（B站式）：舞台铺满浏览器视口（非系统全屏），Esc 退出（max-height 需压过宽屏/播放态的钳制规则）；
+           dvh 兜底 iOS Safari 地址栏导致的 100vh 溢出 */
+        .video-stage.webfs { position: fixed; inset: 0; z-index: 2500; width: 100vw; height: 100vh; height: 100dvh; max-height: none !important; aspect-ratio: auto; border-radius: 0; }
         .video-stage video { display: block; width: 100%; height: 100%; background: #000; object-fit: contain; }
         /* 画面比例模式（B站式）：铺满=裁剪填满无黑框，拉伸=强制变形填满 */
         .video-stage video.obj-cover { object-fit: cover; }
@@ -412,6 +413,10 @@
             .media-cat-acts { opacity: 1; }
             .media-side-foot { flex-direction: row; }
             .media-side-foot .btn-sm { flex: 1; }
+            /* 播放态时分类条被 JS 搬进 media-main 紧贴播放列表上方（videoRelocateCats），去掉独立卡片感改为分隔线 */
+            .media-main .media-sidebar { border: none; border-radius: 0; border-bottom: 1px solid #f0f0f0; }
+            .media-main .media-sidebar .media-cat-list { padding: 6px 10px; }
+            .media-main .media-sidebar .media-side-head { padding: 8px 12px 4px; }
             .media-main { min-height: 60vh; }
             /* 播放态：播放器在上、播放列表在下（flex 主轴改纵向） */
             .media-main.player-open { flex-direction: column; flex-wrap: nowrap; }

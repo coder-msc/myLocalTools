@@ -1096,6 +1096,7 @@
             const inline = document.getElementById('videoPlayerInline');
             inline.style.display = 'block';
             document.querySelector('#tab-video .media-main').classList.add('player-open');
+            videoRelocateCats(); // 手机端：分类条搬到播放列表上方
             // 重置进度 UI
             document.getElementById('videoFill').style.width = '0%';
             document.getElementById('videoBuf').style.width = '0%';
@@ -1133,11 +1134,27 @@
             document.getElementById('videoPlayerInline').style.display = 'none';
             document.querySelector('#tab-video .media-main').classList.remove('player-open');
             document.getElementById('videoSpeedMenu').classList.remove('show');
+            document.getElementById('videoFitMenu').classList.remove('show');
             document.getElementById('videoRateBadge').classList.remove('show');
             if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             vdmStop();
             videoCurrentId = null;
             videoUpdatePlayingCard();
+            videoRelocateCats();
+        }
+        // 手机端播放态：把分类条 DOM 搬到播放列表正上方（切分类/切视频不分离）；退出播放或回桌面宽度时搬回原位
+        function videoRelocateCats() {
+            const layout = document.querySelector('#tab-video .media-layout');
+            const sidebar = layout ? layout.querySelector('.media-sidebar') : null;
+            const main = document.querySelector('#tab-video .media-main');
+            const grid = document.querySelector('#tab-video .video-grid');
+            if (!layout || !sidebar || !main || !grid) return;
+            const mobile = window.matchMedia('(max-width: 768px)').matches;
+            if (mobile && main.classList.contains('player-open')) {
+                if (sidebar.parentElement !== main) main.insertBefore(sidebar, grid);
+            } else if (sidebar.parentElement !== layout) {
+                layout.insertBefore(sidebar, layout.firstElementChild);
+            }
         }
         function videoUpdatePlayingCard() {
             document.querySelectorAll('#videoGrid .video-card').forEach(el => {
@@ -1430,7 +1447,7 @@
             document.getElementById('videoWebFsBtn').addEventListener('click', videoToggleWebFs);
             // 窗口/列宽变化、进出全屏时重算舞台尺寸（auto 模式按最大高度反推宽度依赖当前可用空间）
             let videoFitResizeTimer = null;
-            window.addEventListener('resize', () => { clearTimeout(videoFitResizeTimer); videoFitResizeTimer = setTimeout(videoApplyFit, 200); });
+            window.addEventListener('resize', () => { clearTimeout(videoFitResizeTimer); videoFitResizeTimer = setTimeout(() => { videoApplyFit(); videoRelocateCats(); }, 200); });
             document.addEventListener('fullscreenchange', () => { setTimeout(videoApplyFit, 50); videoRebuildFitMenu(); });
 
             // 循环播放开关（记忆状态）
@@ -1540,8 +1557,33 @@
         }
         function videoToggleFullscreen() {
             const stage = document.getElementById('videoStage');
-            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-            else stage.requestFullscreen().catch(() => {});
+            const v = document.getElementById('videoPlayerEl');
+            // 已在系统全屏则退出
+            if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+            // 标准 Fullscreen API（桌面 / Android Chrome）；被浏览器拒绝或永远挂起（部分 WebView 无用户手势）时降级网页全屏
+            if (stage.requestFullscreen) {
+                let settled = false;
+                stage.requestFullscreen().then(() => {
+                    settled = true;
+                    // 手机端进全屏自动锁横屏（B站做法），失败静默
+                    try {
+                        if (window.matchMedia('(pointer: coarse)').matches && screen.orientation && screen.orientation.lock) {
+                            screen.orientation.lock('landscape').catch(() => {});
+                        }
+                    } catch (e) {}
+                }).catch(() => {
+                    settled = true;
+                    if (!stage.classList.contains('webfs')) videoToggleWebFs();
+                });
+                setTimeout(() => { if (!settled && !stage.classList.contains('webfs')) videoToggleWebFs(); }, 800);
+                return;
+            }
+            // 旧版 webkit 前缀（iPad Safari / 老安卓 WebView）
+            if (stage.webkitRequestFullscreen) { stage.webkitRequestFullscreen(); return; }
+            // iPhone Safari：不支持元素级全屏，退回原生播放器全屏
+            if (v.webkitEnterFullscreen) { v.webkitEnterFullscreen(); return; }
+            // 兜底：网页全屏（铺满视口，自制控制栏/弹幕仍可用）
+            videoToggleWebFs();
         }
         function videoShowControls() {
             document.getElementById('videoStage').classList.remove('vc-hidden');

@@ -19,24 +19,33 @@
 
         .tabs {
             display: flex;
-            gap: 4px;
-            margin-bottom: 16px;
+            gap: 2px;
+            margin-bottom: 14px;
             border-bottom: 2px solid #e5e7eb;
             padding-left: 8px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overscroll-behavior-x: contain;
+            scrollbar-width: none;
         }
+        .tabs::-webkit-scrollbar { display: none; }
 
         .tab-btn {
-            padding: 10px 24px;
+            padding: 6px 14px;
             border: none;
             background: transparent;
             color: #6b7280;
-            font-size: 15px;
+            font-size: 13px;
             font-weight: 500;
             cursor: pointer;
+            white-space: nowrap;
+            flex: 0 0 auto;
             border-bottom: 2px solid transparent;
             margin-bottom: -2px;
             transition: all 0.2s;
         }
+        .tab-btn[draggable="true"] { cursor: grab; }
+        .tab-btn.dragging { opacity: 0.35; }
         .tab-btn:hover { color: #409eff; }
         .tab-btn.active {
             color: #409eff;
@@ -2018,18 +2027,18 @@
 <body>
     <div class="container">
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('parser')">JSON 解析</button>
-            <button class="tab-btn" onclick="switchTab('task')">异步任务查询</button>
-            <button class="tab-btn" onclick="switchTab('apitest')">接口测试</button>
-            <button class="tab-btn" onclick="switchTab('websocket')">WebSocket</button>
-            <button class="tab-btn" onclick="switchTab('devtools')">🛠 开发者工具</button>
-            <button class="tab-btn" onclick="switchTab('bookmarks')">⭐ 书签管理</button>
-            <button class="tab-btn" onclick="switchTab('pomodoro')">⏱ 番茄钟</button>
-            <button class="tab-btn" id="clipTabBtn" onclick="switchTab('clipboard')" style="display:none;">📋 剪贴板</button>
-            <button class="tab-btn" onclick="switchTab('danmaku')">📱 滚动提醒</button>
-            <button class="tab-btn" onclick="switchTab('chat')">💬 公共频道</button>
-            <button class="tab-btn" id="musicTabBtn" onclick="switchTab('music')" style="display:none;">🎵 本地音乐</button>
-            <button class="tab-btn" id="videoTabBtn" onclick="switchTab('video')" style="display:none;">🎬 本地视频</button>
+            <button class="tab-btn active" data-tab="parser" onclick="switchTab('parser')">JSON 解析</button>
+            <button class="tab-btn" data-tab="task" onclick="switchTab('task')">异步任务查询</button>
+            <button class="tab-btn" data-tab="apitest" onclick="switchTab('apitest')">接口测试</button>
+            <button class="tab-btn" data-tab="websocket" onclick="switchTab('websocket')">WebSocket</button>
+            <button class="tab-btn" data-tab="devtools" onclick="switchTab('devtools')">🛠 开发者工具</button>
+            <button class="tab-btn" data-tab="bookmarks" onclick="switchTab('bookmarks')">⭐ 书签管理</button>
+            <button class="tab-btn" data-tab="pomodoro" onclick="switchTab('pomodoro')">⏱ 番茄钟</button>
+            <button class="tab-btn" data-tab="clipboard" id="clipTabBtn" onclick="switchTab('clipboard')" style="display:none;">📋 剪贴板</button>
+            <button class="tab-btn" data-tab="danmaku" onclick="switchTab('danmaku')">📱 滚动提醒</button>
+            <button class="tab-btn" data-tab="chat" onclick="switchTab('chat')">💬 公共频道</button>
+            <button class="tab-btn" data-tab="music" id="musicTabBtn" onclick="switchTab('music')" style="display:none;">🎵 本地音乐</button>
+            <button class="tab-btn" data-tab="video" id="videoTabBtn" onclick="switchTab('video')" style="display:none;">🎬 本地视频</button>
         </div>
 
         <!-- Tab 1: JSON Parser -->
@@ -3482,8 +3491,9 @@
 
         function switchTab(tab) {
             const tabs = ['parser', 'task', 'apitest', 'websocket', 'devtools', 'bookmarks', 'pomodoro', 'clipboard', 'danmaku', 'chat', 'music', 'video'];
-            document.querySelectorAll('.tab-btn').forEach((b, i) => {
-                b.classList.toggle('active', tabs[i] === tab);
+            // 按钮顺序可被拖拽定制，因此按 data-tab 匹配而不是按下标（下标会随拖拽错位）
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.tab === tab);
             });
             tabs.forEach(t => {
                 const el = document.getElementById('tab-' + t);
@@ -3496,6 +3506,70 @@
             if (tab === 'music') musicTabOn(); else musicTabOff();
             if (tab === 'video') videoTabOn(); else videoTabOff();
         }
+
+        // ---- Tab 拖拽排序（桌面端）：常用工具拖到顺手的位置 ----
+        // 顺序优先存服务端 ui_prefs.json（跨浏览器/设备共享、清缓存不丢），localStorage 作秒显兜底
+        (function initTabDrag() {
+            const bar = document.querySelector('.tabs');
+            if (!bar) return;
+            const isDesktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+            const btns = [...bar.querySelectorAll('.tab-btn')];
+            const applyOrder = (order) => {
+                if (!Array.isArray(order)) return;
+                const byId = {}; btns.forEach(b => byId[b.dataset.tab] = b);
+                const ordered = order.map(id => byId[id]).filter(Boolean);
+                btns.forEach(b => { if (!ordered.includes(b)) ordered.push(b); });
+                ordered.forEach(b => bar.appendChild(b));
+            };
+            // 先用 localStorage 立即恢复（无闪烁），服务端返回后再覆盖（服务端优先）
+            try { applyOrder(JSON.parse(localStorage.getItem('tabOrder') || 'null')); } catch (e) {}
+            fetch('/api/ui-prefs').then(r => r.json()).then(res => {
+                if (res && res.success && res.data) {
+                    applyOrder(res.data.tabOrder);
+                    try { localStorage.setItem('tabOrder', JSON.stringify(res.data.tabOrder)); } catch (e) {}
+                }
+            }).catch(() => {}); // 服务端不可用时静默留在 localStorage 版本
+            if (!isDesktop) return; // 手机端保持滑动优先，不启用拖拽（HTML5 DnD 与触摸滚动冲突）
+            let dragging = null;
+            const save = () => {
+                const order = [...bar.querySelectorAll('.tab-btn')].map(b => b.dataset.tab);
+                try { localStorage.setItem('tabOrder', JSON.stringify(order)); } catch (e) {}
+                fetch('/api/ui-prefs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tabOrder: order })
+                }).catch(() => {});
+            };
+            btns.forEach(btn => {
+                btn.draggable = true;
+                btn.addEventListener('dragstart', e => {
+                    dragging = btn;
+                    btn.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    try { e.dataTransfer.setData('text/plain', ''); } catch (err) {}
+                });
+                btn.addEventListener('dragend', () => {
+                    btn.classList.remove('dragging');
+                    dragging = null;
+                    save();
+                });
+            });
+            bar.addEventListener('dragover', e => {
+                if (!dragging) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                // 按鼠标 X 与各按钮中点比较，实时决定插入位置（跳过隐藏按钮）
+                let ref = null;
+                for (const b of bar.querySelectorAll('.tab-btn')) {
+                    if (b === dragging || b.style.display === 'none') continue;
+                    const r = b.getBoundingClientRect();
+                    if (e.clientX < r.left + r.width / 2) { ref = b; break; }
+                }
+                if (ref) bar.insertBefore(dragging, ref);
+                else bar.appendChild(dragging);
+            });
+            bar.addEventListener('drop', e => e.preventDefault()); // Firefox 需要，否则可能触发导航
+        })();
 
         const API_URL_KEY = 'jsonTool_apiUrl';
         const POLL_KEY = 'jsonTool_pollInterval';
