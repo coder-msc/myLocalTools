@@ -16,21 +16,26 @@
         let musicLrcIdx = -1;
 
         // ---- 共用：拖拽进度条/音量条 helper（音乐 + 视频共用） ----
-        function mediaBindTrack(trackEl, fillEl, onFraction, tipEl, getTipText) {
+        // opts.live: true=拖动实时生效（音量条）；false/缺省=拖动中只更新进度 UI，松手才生效
+        // （进度条若拖动中实时 seek，每次赋值都会取消并重发媒体 Range 请求，造成请求风暴+卡顿）
+        function mediaBindTrack(trackEl, fillEl, onFraction, tipEl, getTipText, opts) {
             if (!trackEl) return;
-            let dragging = false;
+            const live = !!(opts && opts.live);
+            let dragging = false, pendingF = null;
             const calc = (e) => {
                 const rect = trackEl.getBoundingClientRect();
                 if (rect.width <= 0) return 0;
                 return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
             };
+            const apply = (f) => {
+                fillEl && (fillEl.style.width = (f * 100) + '%');
+                if (live) onFraction(f); else pendingF = f;
+            };
             trackEl.addEventListener('pointerdown', (e) => {
                 dragging = true;
                 trackEl.classList.add('dragging');
-                trackEl.setPointerCapture(e.pointerId);
-                const f = calc(e);
-                fillEl && (fillEl.style.width = (f * 100) + '%');
-                onFraction(f);
+                try { trackEl.setPointerCapture(e.pointerId); } catch(_){}
+                apply(calc(e));
             });
             trackEl.addEventListener('pointermove', (e) => {
                 const f = calc(e);
@@ -39,15 +44,14 @@
                     tipEl.style.left = (f * trackEl.getBoundingClientRect().width) + 'px';
                     if (getTipText) tipEl.textContent = getTipText(f);
                 }
-                if (!dragging) return;
-                fillEl && (fillEl.style.width = (f * 100) + '%');
-                onFraction(f);
+                if (dragging) apply(f);
             });
             const stopDrag = (e) => {
                 if (!dragging) return;
                 dragging = false;
                 trackEl.classList.remove('dragging');
                 try { trackEl.releasePointerCapture(e.pointerId); } catch(_){}
+                if (!live && pendingF !== null) { const f = pendingF; pendingF = null; onFraction(f); }
             };
             trackEl.addEventListener('pointerup', stopDrag);
             trackEl.addEventListener('pointercancel', stopDrag);
@@ -1082,8 +1086,11 @@
             if (!['.mp4', '.mov', '.webm', '.m4v'].includes(f.ext)) { showToast('该格式浏览器不支持在线播放，请外部打开', 'error'); return; }
             videoCurrentId = id;
             const v = document.getElementById('videoPlayerEl');
+            // 有封面帧先显示 poster，避免打开时黑屏等待首帧解码
+            v.poster = f.thumbFile ? ('/media_thumb?id=' + id) : '';
             v.src = '/media_file?id=' + id;
             v.playbackRate = videoSavedRate;
+            v.play().catch(() => {}); // 尽早触发加载与解码，不等下方 DOM 渲染
             document.getElementById('videoPlayerTitle').textContent = f.customName || f.name;
             videoFillInfo(f);
             const inline = document.getElementById('videoPlayerInline');
@@ -1099,7 +1106,26 @@
             vdmLoadForVideo(id);
             vdmStart();
             inline.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            v.play().catch(() => {});
+            videoPrefetchNext();
+        }
+        // 预取队列下一个视频的头部（元数据+起始数据）进浏览器媒体缓存（响应头 immutable 可缓存），
+        // 切换播放时直接命中缓存近乎秒开；只拉不播，元数据到手即释放
+        const videoPrefetched = new Set();
+        function videoPrefetchNext() {
+            const queue = (videoQueue && videoQueue.length) ? videoQueue : videoData.files;
+            const playable = queue.filter(f => ['.mp4', '.mov', '.webm', '.m4v'].includes(f.ext));
+            if (!playable.length) return;
+            let idx = playable.findIndex(f => f.id === videoCurrentId);
+            idx = (idx + 1) % playable.length;
+            const nid = playable[idx].id;
+            if (nid === videoCurrentId || videoPrefetched.has(nid)) return;
+            videoPrefetched.add(nid);
+            const pv = document.createElement('video');
+            pv.muted = true; pv.preload = 'auto';
+            pv.src = '/media_file?id=' + nid;
+            const release = () => { try { pv.removeAttribute('src'); pv.load(); } catch (e) {} };
+            pv.addEventListener('loadedmetadata', release);
+            setTimeout(release, 10000); // 兜底：慢速大文件 10s 后释放
         }
         function videoClosePlayer() {
             const v = document.getElementById('videoPlayerEl');
@@ -1232,7 +1258,7 @@
                 f => videoPadTime((v.duration || 0) * f));
 
             // 音量条
-            mediaBindTrack(document.getElementById('videoVolSlider'), document.getElementById('videoVolFill'), f => videoSetVolume(f));
+            mediaBindTrack(document.getElementById('videoVolSlider'), document.getElementById('videoVolFill'), f => videoSetVolume(f), null, null, { live: true });
             videoSetVolume(videoSavedVol);
             document.getElementById('videoVolIcon').addEventListener('click', videoMuteToggle);
 

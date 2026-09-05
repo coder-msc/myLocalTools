@@ -1052,12 +1052,15 @@ class ProxyHandler(SimpleHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
     def end_headers(self):
-        # 本地开发工具：禁用缓存，保证 HTML/CSS/JS 改动即时生效
-        self.send_header('Cache-Control', 'no-cache')
+        # 本地开发工具：禁用缓存，保证 HTML/CSS/JS 改动即时生效；
+        # 媒体文件响应已显式声明自己的缓存策略（长缓存），不再追加 no-cache（否则 no-cache 优先、缓存失效）
+        if not getattr(self, '_own_cache_policy', False):
+            self.send_header('Cache-Control', 'no-cache')
         super().end_headers()
 
     def _serve_media_file(self, abs_path, content_type):
         """流式播放媒体文件（支持 HTTP Range 请求，用于拖动进度条）"""
+        self._own_cache_policy = True  # end_headers 不再追加 no-cache
         try:
             size = os.path.getsize(abs_path)
         except OSError:
@@ -1085,7 +1088,8 @@ class ProxyHandler(SimpleHTTPRequestHandler):
         self.send_header('Content-Length', str(length))
         self.send_header('Accept-Ranges', 'bytes')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Cache-Control', 'no-store')
+        # id 含 mtime：文件内容一变 ID/URL 就变，长缓存安全；浏览器媒体缓存命中后同视频再开近乎秒开
+        self.send_header('Cache-Control', 'public, max-age=31536000, immutable')
         if is_range:
             self.send_header('Content-Range', 'bytes {}-{}/{}'.format(start, end, size))
         self.end_headers()
