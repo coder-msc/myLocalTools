@@ -7061,7 +7061,6 @@
         const CHAT_KEY = 'jsonTool_chat_identity';
         const CHAT_COLORS = ['#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899'];
         const CHAT_NAME_POOL = ['杰瑞', '汤姆', '小强', '旺财', '来福', '咸鱼', '摸鱼侠', '干饭人', '加班狗', '路人甲'];
-        const CHAT_MAX_FILE = 20 * 1024 * 1024;
         let chatItems = [];
         let chatOpen = false;
         let chatServerOk = null;
@@ -7285,7 +7284,6 @@
 
         async function chatUploadFiles(files) {
             for (const f of files) {
-                if (f.size > CHAT_MAX_FILE) { showToast(`${f.name} 超过 20MB 限制`, 'info'); continue; }
                 const isImg = (f.type || '').startsWith('image/');
                 const pid = 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
                 chatPending.set(pid, { id: pid, name: f.name });

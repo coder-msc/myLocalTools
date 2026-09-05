@@ -647,7 +647,7 @@ CHAT_FILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chat_
 CHAT_MAX_ITEMS = 300                  # 最多保留消息条数
 CHAT_MAX_TEXT = 5000                  # 单条文本长度上限（字符）
 CHAT_MAX_NAME = 24                    # 昵称长度上限
-CHAT_MAX_FILE_BYTES = 20 * 1024 * 1024   # 单个附件上限（20MB）
+# 附件不设大小上限：上传/下载均为流式分块读写，内存占用与文件大小无关（受磁盘约束）
 CHAT_IMG_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
 
 _chat_lock = threading.Lock()
@@ -728,30 +728,48 @@ def _chat_add_text(client_id, name, color, text):
         return item
 
 
-def _chat_add_attachment(client_id, name, color, fname, is_image, data):
-    """落盘一个附件并生成对应消息。返回 (item, error)，成功时 error 为 None"""
-    if not data:
+def _chat_add_attachment(client_id, name, color, fname, is_image, src, length):
+    """流式落盘一个附件并生成对应消息（1MB 分块边收边写，内存占用与文件大小无关，不设上限）。
+    src: 请求 body 流（read(n)），length: Content-Length。返回 (item, error)，成功时 error 为 None"""
+    if not length:
         return None, 'empty file'
-    if len(data) > CHAT_MAX_FILE_BYTES:
-        return None, 'file too large (max 20MB)'
     ext = os.path.splitext(os.path.basename(str(fname or '')))[1].lower()
     if len(ext) > 10:
         ext = ''
-    with _chat_lock:
-        items = _chat_load()
-        stored = 'chat_' + str(int(time.time() * 1000)) + '_' + str(len(items)) + ext
+    os.makedirs(CHAT_FILES_DIR, exist_ok=True)
+    # 文件名带随机后缀：落盘在锁外进行（不能持锁等网络），随机串避免并发同名
+    stored = 'chat_' + str(int(time.time() * 1000)) + '_' + os.urandom(3).hex() + ext
+    path = os.path.join(CHAT_FILES_DIR, stored)
+    size = 0
+    try:
+        with open(path, 'wb') as f:
+            remaining = length
+            while remaining > 0:
+                chunk = src.read(min(1024 * 1024, remaining))
+                if not chunk:
+                    raise ConnectionError('client aborted')
+                f.write(chunk)
+                size += len(chunk)
+                remaining -= len(chunk)
+    except (OSError, ConnectionError):
         try:
-            os.makedirs(CHAT_FILES_DIR, exist_ok=True)
-            with open(os.path.join(CHAT_FILES_DIR, stored), 'wb') as f:
-                f.write(data)
+            os.remove(path)
         except OSError:
-            return None, 'save failed'
-        w = h = None
-        if ext == '.png':
-            sz = _png_size(_png_trim(data) or b'')
+            pass
+        return None, 'save failed'
+    w = h = None
+    if ext == '.png':
+        try:
+            with open(path, 'rb') as f:
+                head = f.read(24)  # IHDR 尺寸只需前 24 字节
+            sz = _png_size(head)
             if sz:
                 w, h = sz
-        disp_name = os.path.basename(str(fname or stored))[:120]
+        except OSError:
+            pass
+    disp_name = os.path.basename(str(fname or stored))[:120]
+    with _chat_lock:
+        items = _chat_load()
         item = {
             "id": 'm_' + str(int(time.time() * 1000)) + '_' + str(len(items)),
             "clientId": str(client_id or '')[:64],
@@ -760,7 +778,7 @@ def _chat_add_attachment(client_id, name, color, fname, is_image, data):
             "type": "image" if is_image else "file",
             "file": stored,
             "fileName": disp_name,
-            "fileSize": len(data),
+            "fileSize": size,
             "w": w,
             "h": h,
             "time": int(time.time() * 1000),
@@ -1202,9 +1220,7 @@ class ProxyHandler(SimpleHTTPRequestHandler):
             body = self.rfile.read(length) if length else b''
             self.handle_chat_post(body)
         elif parsed.path == '/api/chat/attach':
-            length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(length) if length else b''
-            self.handle_chat_attach(parsed, body)
+            self.handle_chat_attach(parsed)  # 流式上传：body 不预读，直接分块落盘
         elif parsed.path == '/api/media':
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length) if length else b''
@@ -1590,17 +1606,16 @@ class ProxyHandler(SimpleHTTPRequestHandler):
             items = _chat_load()
         self.send_json(200, {"success": True, "data": items})
 
-    def handle_chat_attach(self, parsed, body):
-        """附件上传（原始二进制 body，元数据走 query string）：
-        POST /api/chat/attach?clientId=..&name=..&color=..&fname=..&isImage=1
-        """
+    def handle_chat_attach(self, parsed):
+        """附件上传（流式，不设大小限制）：元数据走 query string，原始二进制 body 1MB 分块写盘"""
         qs = parse_qs(parsed.query)
         q = lambda k: qs.get(k, [''])[0]
         fname = unquote(q('fname'))
         is_image = q('isImage') in ('1', 'true', 'yes')
+        length = int(self.headers.get('Content-Length', 0) or 0)
         item, err = _chat_add_attachment(
             unquote(q('clientId')), unquote(q('name')), unquote(q('color')),
-            fname, is_image, body)
+            fname, is_image, self.rfile, length)
         if err:
             self.send_json(400, {"error": err})
             return
@@ -1609,29 +1624,37 @@ class ProxyHandler(SimpleHTTPRequestHandler):
         self.send_json(200, {"success": True, "data": items})
 
     def handle_chat_file(self, parsed):
-        """提供聊天附件（basename 防目录穿越，按扩展名给 Content-Type）"""
+        """提供聊天附件（basename 防目录穿越，按扩展名给 Content-Type）；流式分块回写，内存占用与文件大小无关"""
         name = os.path.basename(unquote(parsed.path[len('/chat_files/'):]))
         path = os.path.join(CHAT_FILES_DIR, name)
         if not name or not os.path.isfile(path):
             self.send_error(404, 'Not Found')
             return
         try:
-            with open(path, 'rb') as f:
-                data = f.read()
+            f = open(path, 'rb')
         except OSError:
             self.send_error(404, 'Not Found')
             return
-        ext = os.path.splitext(name)[1].lower()
-        ctype = _CHAT_CT.get(ext, 'application/octet-stream')
-        self.send_response(200)
-        self.send_header('Content-Type', ctype)
-        self.send_header('Content-Length', str(len(data)))
-        self.send_header('Access-Control-Allow-Origin', '*')
-        if ctype == 'application/octet-stream':
-            self.send_header('Content-Disposition', 'attachment')
-        self.send_header('Cache-Control', 'no-store')
-        self.end_headers()
-        self.wfile.write(data)
+        with f:
+            try:
+                size = os.fstat(f.fileno()).st_size
+            except OSError:
+                self.send_error(404, 'Not Found')
+                return
+            ext = os.path.splitext(name)[1].lower()
+            ctype = _CHAT_CT.get(ext, 'application/octet-stream')
+            self.send_response(200)
+            self.send_header('Content-Type', ctype)
+            self.send_header('Content-Length', str(size))
+            self.send_header('Access-Control-Allow-Origin', '*')
+            if ctype == 'application/octet-stream':
+                self.send_header('Content-Disposition', 'attachment')
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            try:
+                shutil.copyfileobj(f, self.wfile, 1024 * 1024)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # 对端中途取消下载
 
     # ==================== 本地媒体库 Handler ====================
 
