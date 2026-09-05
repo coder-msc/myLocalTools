@@ -1219,25 +1219,47 @@
         const videoSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
         let videoSuppressClick = false;
 
-        // ---- 画面比例（B站式）：适配=舞台跟随视频宽高比（无黑框）；16:9/4:3=固定比例；铺满=裁剪填满；拉伸=变形填满 ----
+        // ---- 画面比例（B站式）：窗口模式只提供完整显示的比例（适配/16:9/4:3）；
+        //      会裁剪的填充方式（包含/铺满/拉伸）仅在全屏/网页全屏时出现（对应B站"全屏时画面比例"设置） ----
         const VIDEO_FIT_MODES = [
             { key: 'auto', label: '适配' },
             { key: '169', label: '16:9' },
-            { key: '43', label: '4:3' },
+            { key: '43', label: '4:3' }
+        ];
+        const VIDEO_FS_FILL = [
+            { key: 'contain', label: '包含' },
             { key: 'cover', label: '铺满' },
             { key: 'fill', label: '拉伸' }
         ];
-        let videoFitIdx = Math.min(Math.max(parseInt(localStorage.getItem('videoFitIdx'), 10) || 0, 0), VIDEO_FIT_MODES.length - 1);
+        let videoFitIdx = parseInt(localStorage.getItem('videoFitIdx'), 10) || 0;
+        if (videoFitIdx < 0 || videoFitIdx >= VIDEO_FIT_MODES.length) videoFitIdx = 0; // 兼容旧版存过 铺满/拉伸 的索引
+        let videoFsFillIdx = Math.min(Math.max(parseInt(localStorage.getItem('videoFsFillIdx'), 10) || 0, 0), VIDEO_FS_FILL.length - 1);
+
+        // 当前是否处于全屏场景（系统全屏或网页全屏）
+        function videoFsActive() {
+            const stage = document.getElementById('videoStage');
+            return !!document.fullscreenElement || !!(stage && stage.classList.contains('webfs'));
+        }
 
         function videoApplyFit() {
             const v = document.getElementById('videoPlayerEl');
             const stage = document.getElementById('videoStage');
             const btn = document.getElementById('videoFitBtn');
             if (!v || !stage || !btn) return;
-            const mode = VIDEO_FIT_MODES[videoFitIdx].key;
-            v.classList.toggle('obj-cover', mode === 'cover');
-            v.classList.toggle('obj-fill', mode === 'fill');
             stage.style.width = ''; stage.style.height = ''; stage.style.margin = '';
+            // 全屏（含网页全屏）：舞台由 CSS 铺满视口，只控制视频填充方式
+            if (videoFsActive()) {
+                const f = VIDEO_FS_FILL[videoFsFillIdx].key;
+                v.classList.toggle('obj-cover', f === 'cover');
+                v.classList.toggle('obj-fill', f === 'fill');
+                stage.style.aspectRatio = '';
+                btn.textContent = VIDEO_FS_FILL[videoFsFillIdx].label;
+                return;
+            }
+            // 窗口模式：视频永远完整显示（contain），只有舞台比例可选
+            v.classList.remove('obj-cover', 'obj-fill');
+            const mode = VIDEO_FIT_MODES[videoFitIdx].key;
+            btn.textContent = VIDEO_FIT_MODES[videoFitIdx].label;
             if (mode === 'auto') {
                 // 舞台宽高比跟随视频（限制在 0.5~2.4，覆盖 9:16 竖屏到 21:9 宽银幕，极端比例才回退 contain）
                 const ar = Math.min(2.4, Math.max(0.5, (v.videoWidth && v.videoHeight) ? v.videoWidth / v.videoHeight : 16 / 9));
@@ -1257,14 +1279,41 @@
             } else {
                 stage.style.aspectRatio = (mode === '43') ? '4 / 3' : '16 / 9';
             }
-            btn.textContent = VIDEO_FIT_MODES[videoFitIdx].label;
         }
 
-        function videoCycleFit() {
-            videoFitIdx = (videoFitIdx + 1) % VIDEO_FIT_MODES.length;
-            localStorage.setItem('videoFitIdx', String(videoFitIdx));
-            videoApplyFit();
-            showToast('画面比例：' + VIDEO_FIT_MODES[videoFitIdx].label, 'info', 1200);
+        // 根据当前场景重建菜单项（窗口=比例，全屏=填充方式）并同步高亮
+        function videoRebuildFitMenu() {
+            const fitMenu = document.getElementById('videoFitMenu');
+            if (!fitMenu) return;
+            const list = videoFsActive() ? VIDEO_FS_FILL : VIDEO_FIT_MODES;
+            fitMenu.innerHTML = list.map((m, i) => `<div class="video-speed-item" data-i="${i}">${m.label}</div>`).join('');
+            const activeIdx = videoFsActive() ? videoFsFillIdx : videoFitIdx;
+            fitMenu.querySelectorAll('.video-speed-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.i, 10) === activeIdx));
+        }
+
+        // ---- 宽屏模式 / 网页全屏（B站式） ----
+        let videoWide = localStorage.getItem('videoWide') === '1';
+
+        // 宽屏：播放器独占整行（列变全宽、舞台更高），播放列表沉到下方横排网格
+        function videoSetWide(on) {
+            videoWide = !!on;
+            localStorage.setItem('videoWide', videoWide ? '1' : '0');
+            const main = document.querySelector('#tab-video .media-main');
+            if (main) main.classList.toggle('wide-mode', videoWide);
+            const b = document.getElementById('videoWideBtn');
+            if (b) b.classList.toggle('vc-active', videoWide);
+            setTimeout(videoApplyFit, 50); // 列宽变化后重算舞台尺寸
+        }
+
+        // 网页全屏：舞台铺满浏览器视口（非系统全屏）
+        function videoToggleWebFs() {
+            const stage = document.getElementById('videoStage');
+            if (!stage) return;
+            const on = stage.classList.toggle('webfs');
+            const b = document.getElementById('videoWebFsBtn');
+            if (b) b.classList.toggle('vc-active', on);
+            document.body.style.overflow = on ? 'hidden' : '';
+            setTimeout(() => { videoApplyFit(); videoRebuildFitMenu(); }, 50);
         }
 
         // B站风格线性图标
@@ -1356,12 +1405,33 @@
                 if (!menu.contains(e.target) && !e.target.closest('#videoSpeedBtn')) menu.classList.remove('show');
             });
 
-            // 画面比例切换（适配/16:9/4:3/铺满/拉伸，记忆状态）
-            document.getElementById('videoFitBtn').addEventListener('click', videoCycleFit);
+            // 画面比例悬浮菜单（与倍速同款交互；全屏时菜单项自动切换为填充方式）
+            const fitMenu = document.getElementById('videoFitMenu');
+            fitMenu.addEventListener('click', (e) => {
+                const item = e.target.closest('.video-speed-item');
+                if (!item) return;
+                if (videoFsActive()) {
+                    videoFsFillIdx = parseInt(item.dataset.i, 10) || 0;
+                    localStorage.setItem('videoFsFillIdx', String(videoFsFillIdx));
+                } else {
+                    videoFitIdx = parseInt(item.dataset.i, 10) || 0;
+                    localStorage.setItem('videoFitIdx', String(videoFitIdx));
+                }
+                videoApplyFit();
+                videoRebuildFitMenu();
+                fitMenu.classList.remove('show');
+            });
+            document.getElementById('videoFitBtn').addEventListener('click', (e) => { e.stopPropagation(); fitMenu.classList.toggle('show'); });
+            document.addEventListener('click', (e) => {
+                if (!fitMenu.contains(e.target) && !e.target.closest('#videoFitBtn')) fitMenu.classList.remove('show');
+            });
+            // 宽屏模式 / 网页全屏（B站式）
+            document.getElementById('videoWideBtn').addEventListener('click', () => videoSetWide(!videoWide));
+            document.getElementById('videoWebFsBtn').addEventListener('click', videoToggleWebFs);
             // 窗口/列宽变化、进出全屏时重算舞台尺寸（auto 模式按最大高度反推宽度依赖当前可用空间）
             let videoFitResizeTimer = null;
             window.addEventListener('resize', () => { clearTimeout(videoFitResizeTimer); videoFitResizeTimer = setTimeout(videoApplyFit, 200); });
-            document.addEventListener('fullscreenchange', () => setTimeout(videoApplyFit, 50));
+            document.addEventListener('fullscreenchange', () => { setTimeout(videoApplyFit, 50); videoRebuildFitMenu(); });
 
             // 循环播放开关（记忆状态）
             const loopBtn = document.getElementById('videoLoopBtn');
@@ -1396,6 +1466,8 @@
             // 初始化按钮图标与倍速高亮
             videoSetRate(videoSavedRate);
             videoApplyFit();
+            videoRebuildFitMenu(); // 画面比例菜单项 + 高亮
+            videoSetWide(videoWide);
             videoUpdatePlayUI();
             vdmInitUI();
             videoInitInfoBar();
@@ -1503,7 +1575,11 @@
                 case 'ArrowDown': e.preventDefault(); videoSetVolume(v.volume - 0.1); break;
                 case 'm': case 'M': videoMuteToggle(); break;
                 case 'f': case 'F': videoToggleFullscreen(); break;
-                case 'Escape': if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); break;
+                case 'w': case 'W': videoSetWide(!videoWide); break;
+                case 'Escape':
+                    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); }
+                    else if (document.getElementById('videoStage').classList.contains('webfs')) { videoToggleWebFs(); }
+                    break;
             }
         }
         function videoQueueStep(dir) {

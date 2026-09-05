@@ -216,6 +216,19 @@
         /* --- B站风格视频播放器 --- */
         .video-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 72vh; background: #000; border-radius: 10px; overflow: hidden; }
         .video-stage:fullscreen { width: 100vw !important; height: 100vh !important; max-height: none; margin: 0 !important; border-radius: 0; }
+
+        /* 宽屏模式（B站式）：播放器独占整行变宽变高，播放列表沉到下方恢复横排网格 */
+        .media-main.player-open.wide-mode { overflow-y: auto; }
+        .media-main.player-open.wide-mode .video-player-inline { flex: 0 0 100%; }
+        .media-main.player-open.wide-mode .video-stage { max-height: calc(100vh - 300px); }
+        .media-main.player-open.wide-mode .video-grid {
+            flex: 0 0 100%; width: 100%; height: auto; min-width: 0; max-height: none;
+            border-left: none; flex-flow: row wrap; align-items: stretch; gap: 14px; padding: 38px 14px 14px;
+        }
+        .media-main.player-open.wide-mode .video-grid .video-card { flex: 1 1 220px; }
+
+        /* 网页全屏（B站式）：舞台铺满浏览器视口（非系统全屏），Esc 退出（max-height 需压过宽屏/播放态的钳制规则） */
+        .video-stage.webfs { position: fixed; inset: 0; z-index: 2500; width: 100vw; height: 100vh; max-height: none !important; aspect-ratio: auto; border-radius: 0; }
         .video-stage video { display: block; width: 100%; height: 100%; background: #000; object-fit: contain; }
         /* 画面比例模式（B站式）：铺满=裁剪填满无黑框，拉伸=强制变形填满 */
         .video-stage video.obj-cover { object-fit: cover; }
