@@ -1219,6 +1219,54 @@
         const videoSpeeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
         let videoSuppressClick = false;
 
+        // ---- 画面比例（B站式）：适配=舞台跟随视频宽高比（无黑框）；16:9/4:3=固定比例；铺满=裁剪填满；拉伸=变形填满 ----
+        const VIDEO_FIT_MODES = [
+            { key: 'auto', label: '适配' },
+            { key: '169', label: '16:9' },
+            { key: '43', label: '4:3' },
+            { key: 'cover', label: '铺满' },
+            { key: 'fill', label: '拉伸' }
+        ];
+        let videoFitIdx = Math.min(Math.max(parseInt(localStorage.getItem('videoFitIdx'), 10) || 0, 0), VIDEO_FIT_MODES.length - 1);
+
+        function videoApplyFit() {
+            const v = document.getElementById('videoPlayerEl');
+            const stage = document.getElementById('videoStage');
+            const btn = document.getElementById('videoFitBtn');
+            if (!v || !stage || !btn) return;
+            const mode = VIDEO_FIT_MODES[videoFitIdx].key;
+            v.classList.toggle('obj-cover', mode === 'cover');
+            v.classList.toggle('obj-fill', mode === 'fill');
+            stage.style.width = ''; stage.style.height = ''; stage.style.margin = '';
+            if (mode === 'auto') {
+                // 舞台宽高比跟随视频（限制在 0.5~2.4，覆盖 9:16 竖屏到 21:9 宽银幕，极端比例才回退 contain）
+                const ar = Math.min(2.4, Math.max(0.5, (v.videoWidth && v.videoHeight) ? v.videoWidth / v.videoHeight : 16 / 9));
+                stage.style.aspectRatio = String(ar);
+                // 竖屏等场景：按列宽铺开会超出 max-height → 改为按最大高度反推宽度并居中（B站竖屏做法），保证无黑框
+                if (document.fullscreenElement !== stage) {
+                    const cs = getComputedStyle(stage.parentElement);
+                    const availW = stage.parentElement.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+                    const maxH = parseFloat(getComputedStyle(stage).maxHeight) || 0;
+                    if (maxH && availW > 0 && availW / ar > maxH) {
+                        stage.style.width = Math.round(maxH * ar) + 'px';
+                        stage.style.height = Math.round(maxH) + 'px';
+                        stage.style.margin = '0 auto';
+                        stage.style.aspectRatio = 'auto';
+                    }
+                }
+            } else {
+                stage.style.aspectRatio = (mode === '43') ? '4 / 3' : '16 / 9';
+            }
+            btn.textContent = VIDEO_FIT_MODES[videoFitIdx].label;
+        }
+
+        function videoCycleFit() {
+            videoFitIdx = (videoFitIdx + 1) % VIDEO_FIT_MODES.length;
+            localStorage.setItem('videoFitIdx', String(videoFitIdx));
+            videoApplyFit();
+            showToast('画面比例：' + VIDEO_FIT_MODES[videoFitIdx].label, 'info', 1200);
+        }
+
         // B站风格线性图标
         const V_ICON = {
             play: '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5.14v14l11-7-11-7z" fill="currentColor"/></svg>',
@@ -1245,7 +1293,7 @@
             v.addEventListener('waiting', () => document.getElementById('videoSpinner').style.display = 'block');
             v.addEventListener('playing', () => document.getElementById('videoSpinner').style.display = 'none');
             v.addEventListener('canplay', () => document.getElementById('videoSpinner').style.display = 'none');
-            v.addEventListener('loadedmetadata', () => { v.playbackRate = videoSavedRate; videoUpdateProgressUI(); });
+            v.addEventListener('loadedmetadata', () => { v.playbackRate = videoSavedRate; videoApplyFit(); videoUpdateProgressUI(); });
             v.addEventListener('timeupdate', videoUpdateProgressUI);
             v.addEventListener('progress', videoUpdateBufferUI);
             v.addEventListener('ended', () => videoQueueStep(1));
@@ -1308,6 +1356,13 @@
                 if (!menu.contains(e.target) && !e.target.closest('#videoSpeedBtn')) menu.classList.remove('show');
             });
 
+            // 画面比例切换（适配/16:9/4:3/铺满/拉伸，记忆状态）
+            document.getElementById('videoFitBtn').addEventListener('click', videoCycleFit);
+            // 窗口/列宽变化、进出全屏时重算舞台尺寸（auto 模式按最大高度反推宽度依赖当前可用空间）
+            let videoFitResizeTimer = null;
+            window.addEventListener('resize', () => { clearTimeout(videoFitResizeTimer); videoFitResizeTimer = setTimeout(videoApplyFit, 200); });
+            document.addEventListener('fullscreenchange', () => setTimeout(videoApplyFit, 50));
+
             // 循环播放开关（记忆状态）
             const loopBtn = document.getElementById('videoLoopBtn');
             v.loop = localStorage.getItem('videoLoop') === '1';
@@ -1340,6 +1395,7 @@
 
             // 初始化按钮图标与倍速高亮
             videoSetRate(videoSavedRate);
+            videoApplyFit();
             videoUpdatePlayUI();
             vdmInitUI();
             videoInitInfoBar();
