@@ -1982,6 +1982,44 @@
         .chat-send-btn { flex-shrink: 0; padding: 9px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 13.5px; font-weight: 600; }
         .chat-send-btn:disabled { opacity: .5; cursor: not-allowed; }
 
+        /* ============ 移动端适配（≤768px） ============ */
+        @media (max-width: 768px) {
+            body {
+                padding: calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right))
+                         calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+            }
+            /* 顶部 12 个 tab：横向滑动，不挤压 */
+            .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; padding-left: 0; margin-bottom: 10px; scrollbar-width: none; }
+            .tabs::-webkit-scrollbar { display: none; }
+            .tab-btn { flex: 0 0 auto; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
+            /* 双栏输入改纵向堆叠；四栏按钮改每行两个 */
+            .frow-2 { flex-direction: column; }
+            .frow-4 > * { flex: 1 1 calc(50% - 4px); }
+            /* 请求头编辑：Key/Value/删除堆叠，隐藏表头（输入框有 placeholder） */
+            .headers-head { display: none; }
+            .header-row { flex-wrap: wrap; }
+            .header-row .hdr-key, .header-row .hdr-val { flex: 1 1 100%; }
+            .header-row .hdr-del { flex: 1 1 100%; text-align: right; }
+            /* 表单最小宽度放开 */
+            .form-group.flex-1 { min-width: 0; }
+            /* hover 才出现的操作按钮，触屏常驻可见（媒体库分类按钮在 media.css 移动端块处理） */
+            .chat-del { visibility: visible; }
+            .clip-item-del { visibility: visible; }
+            /* 弹窗不超出屏幕 */
+            .bm-modal, .media-scan-modal { width: 92vw; max-width: 92vw; }
+            /* 各模块滚动区：用 dvh（跟随移动端地址栏）并减小扣除量，保证足够可视高度 */
+            .json-tree, .raw-json { max-height: calc(100dvh - 260px); }
+            .ws-messages { min-height: 200px; max-height: calc(100dvh - 340px); }
+            .wb-wrap { height: calc(100dvh - 240px); }
+            .clip-panel { height: calc(100dvh - 200px); }
+            .dm-stage { height: calc(100dvh - 240px); }
+            .chat-panel { height: calc(100dvh - 200px); }
+            /* 番茄钟统计侧栏不再强制最小宽度 */
+            .pomo-side { min-width: 0; }
+            /* 右键菜单/浮层不超出窄屏 */
+            .media-ctx-menu, .mcm-sub { max-width: 86vw; }
+        }
+
     </style>
     <link rel="stylesheet" href="media.css">
 </head>
@@ -2062,7 +2100,7 @@
                     <div class="form-row">
                         <div class="form-group flex-1">
                             <label>接口地址（完整 URL，含 taskId 参数）</label>
-                            <input type="text" id="apiUrl" placeholder="http://host:port/api/ims-pa/asyn/task?taskId=xxxx">
+                            <input type="text" id="apiUrl" placeholder="http://host:port/api/my-service/asyn/task?taskId=xxxx">
                             <span class="hint">GET 请求，地址会自动保存</span>
                         </div>
                     </div>

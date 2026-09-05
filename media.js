@@ -82,6 +82,8 @@
             const savedVol = parseFloat(localStorage.getItem('musicVol'));
             musicSetVolume(isNaN(savedVol) ? 1 : savedVol);
             mediaBindTrack(document.getElementById('musicVolSlider'), document.getElementById('musicVolFill'), f => musicSetVolume(f));
+            // 移动端长按歌曲行呼出分类菜单
+            mediaBindLongPress(document.getElementById('musicBody'), 'tr[data-mid]', (x, y, el) => musicShowCatMenu({ clientX: x, clientY: y }, el.dataset.mid));
             // 歌词点击跳转（事件委托）
             document.getElementById('musicNowLyrics').addEventListener('click', (e) => {
                 const line = e.target.closest('.music-lrc-line');
@@ -163,6 +165,38 @@
         document.addEventListener('click', () => mediaCloseCtxMenu());
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') mediaCloseCtxMenu(); });
 
+        // ---- 移动端长按呼出右键菜单（与 PC 端 oncontextmenu 等价） ----
+        // container: 委托容器；targetSelector: 可长按元素；onLongPress(x, y, el)
+        function mediaBindLongPress(container, targetSelector, onLongPress) {
+            if (!container || container._lpBound) return;
+            container._lpBound = true;
+            let timer = null, fired = false, sx = 0, sy = 0;
+            container.addEventListener('touchstart', (e) => {
+                const el = e.target.closest(targetSelector);
+                if (!el) return;
+                fired = false;
+                const t = e.touches[0];
+                sx = t.clientX; sy = t.clientY;
+                timer = setTimeout(() => {
+                    fired = true;
+                    mediaCloseCtxMenu();
+                    onLongPress(sx, sy, el);
+                    if (navigator.vibrate) navigator.vibrate(20);
+                }, 500);
+            }, { passive: true });
+            // 手指移动超过阈值视为滚动，取消长按
+            container.addEventListener('touchmove', (e) => {
+                if (!timer) return;
+                const t = e.touches[0];
+                if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) { clearTimeout(timer); timer = null; }
+            }, { passive: true });
+            container.addEventListener('touchend', (e) => {
+                clearTimeout(timer); timer = null;
+                if (fired) e.preventDefault(); // 阻止长按后合成 click（避免误触播放）
+            });
+            container.addEventListener('touchcancel', () => { clearTimeout(timer); timer = null; });
+        }
+
         function musicRender() {
             const search = (document.getElementById('musicSearch')?.value || '').toLowerCase();
             const cat = musicData.activeCat;
@@ -197,7 +231,7 @@
                     const coverCell = f.coverFile
                         ? `<div class="music-row-cover"><img src="/media_cover?id=${f.id}" alt=""></div>`
                         : `<div class="music-row-cover" data-id="${f.id}"><span>🎵</span></div>`;
-                    return `<tr class="${f.id===musicCurrentId?'playing':''}" onclick="musicPlay('${f.id}')" oncontextmenu="event.preventDefault();musicShowCatMenu(event,'${f.id}')">
+                    return `<tr data-mid="${f.id}" class="${f.id===musicCurrentId?'playing':''}" onclick="musicPlay('${f.id}')" oncontextmenu="event.preventDefault();musicShowCatMenu(event,'${f.id}')">
                         <td>${i+1}</td>
                         <td style="width:44px;">${coverCell}</td>
                         <td class="music-cell-title">${f.customName || (f.tags && f.tags.title) || f.name}${artist?`<div class="music-cell-sub">${artist}</div>`:''}</td>
@@ -1273,6 +1307,10 @@
             // 控制栏显隐：鼠标移动显示，播放中停顿 2.5s 自动隐藏
             stage.addEventListener('mousemove', videoShowControls);
             stage.addEventListener('mouseleave', () => { if (!v.paused) videoHideControls(); });
+            // 触屏：触摸播放器即显示控制栏（同样 2.5s 后自动隐藏）
+            stage.addEventListener('touchstart', () => videoShowControls(), { passive: true });
+            // 移动端长按视频卡片呼出右键菜单（播放 / 移动分类 / 重截封面）
+            mediaBindLongPress(document.getElementById('videoGrid'), '.video-card', (x, y, el) => videoShowMenu({ clientX: x, clientY: y }, el.dataset.vid));
 
             // 初始化按钮图标与倍速高亮
             videoSetRate(videoSavedRate);

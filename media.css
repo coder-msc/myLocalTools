@@ -382,3 +382,52 @@
         .media-scan-add input { flex: 1; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; }
         .media-scan-add input:focus { outline: none; border-color: #6366f1; }
         .media-scan-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid #f0f0f0; background: #fafafa; }
+
+        /* ============ 移动端适配（≤768px） ============ */
+        @media (max-width: 768px) {
+            /* 媒体库：侧栏从左栏变为顶部横向分类条 */
+            .media-layout { flex-direction: column; height: auto; min-height: 0; gap: 8px; }
+            .media-sidebar { width: 100%; flex-shrink: 1; overflow: visible; }
+            .media-cat-list { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; padding: 6px; scrollbar-width: none; }
+            .media-cat-list::-webkit-scrollbar { display: none; }
+            .media-cat-item { flex: 0 0 auto; margin-bottom: 0; white-space: nowrap; }
+            /* 触屏无 hover：分类的改名/删除按钮常驻 */
+            .media-cat-acts { opacity: 1; }
+            .media-side-foot { flex-direction: row; }
+            .media-side-foot .btn-sm { flex: 1; }
+            .media-main { min-height: 60vh; }
+            /* 播放态：播放器在上、播放列表在下（flex 主轴改纵向） */
+            .media-main.player-open { flex-direction: column; flex-wrap: nowrap; }
+            .media-main.player-open .media-toolbar { flex: 0 0 auto; height: auto; }
+            .media-main.player-open .video-player-inline { flex: 0 0 auto; height: auto; max-height: none; overflow: visible; }
+            .media-main.player-open .video-stage { max-height: none; min-height: 0; aspect-ratio: 16 / 9; }
+            .media-main.player-open .video-grid {
+                flex: 0 0 auto; width: 100%; height: auto; min-width: 0;
+                border-left: none; border-top: 1px solid #f0f0f0;
+                max-height: 45vh; padding: 38px 8px 8px;
+            }
+            /* 音乐表格列多，窄屏横向滚动 */
+            .media-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .music-table { min-width: 560px; }
+            /* 音乐底部播放器：进度条独占一行 */
+            .music-player { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+            .music-seek { flex: 1 1 100%; order: -1; max-width: none; }
+            .music-player-info { flex: 1 1 100%; }
+            /* 视频控制栏两行按钮允许换行 */
+            .video-ctrl-row { flex-wrap: wrap; gap: 4px; }
+            .video-time { width: 100%; text-align: right; }
+            /* 弹幕发送栏换行 */
+            .danmaku-send-bar { flex-wrap: wrap; gap: 6px; }
+            .dm-mode-sel { order: 1; }
+            .dm-input { flex: 1 1 55%; order: 2; min-width: 120px; }
+            .dm-send-btn { order: 3; }
+            .dm-icon-btn, input[type="color"]#dmColor { order: 4; }
+            /* 扫描弹窗：条目换行、下拉收窄 */
+            .media-scan-item { flex-wrap: wrap; }
+            .media-scan-cat { max-width: 50%; }
+            .media-scan-add { flex-wrap: wrap; }
+            .media-scan-add input { flex: 1 1 60%; }
+            .media-scan-add .media-scan-cat { flex: 1 1 auto; max-width: none; }
+            /* 右键菜单不超出窄屏 */
+            .media-ctx-menu, .mcm-sub { max-width: 86vw; }
+        }
