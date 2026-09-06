@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import struct
 import sys
 import time
@@ -353,6 +354,196 @@ CLIP_MAX_ITEMS = 200      # 最多保留条数
 CLIP_MAX_TEXT = 100000    # 单条文本长度上限（字符）
 CLIP_MAX_IMG_BYTES = 10 * 1024 * 1024   # 单张图片 PNG 上限（10MB）
 CLIP_IMG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'clipboard_files')
+
+# ---- 系统状态采集（/api/sysinfo）：ctypes + 标准库，零第三方依赖 ----
+_SERVER_START = time.time()
+_sys_cpu_last = None
+_sys_net_cache = {'t': 0.0, 'data': None}
+_sys_pubip_cache = {}   # {'v4': (时间, ip), 'v6': (时间, ip)}
+
+
+def _sys_cpu_percent():
+    """GetSystemTimes 两次采样差值算 CPU 使用率；基线超 10 秒作废重来"""
+    global _sys_cpu_last
+    if sys.platform != 'win32':
+        return None
+    import ctypes
+    class FT(ctypes.Structure):
+        _fields_ = [('lo', ctypes.c_uint32), ('hi', ctypes.c_uint32)]
+    idle, kern, user = FT(), FT(), FT()
+    if not ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user)):
+        return None
+    now = (idle.lo | (idle.hi << 32), kern.lo | (kern.hi << 32),
+           user.lo | (user.hi << 32), time.time())
+    last = _sys_cpu_last
+    _sys_cpu_last = now
+    if not last or now[3] - last[3] > 10:
+        return None
+    total = (now[1] + now[2]) - (last[1] + last[2])
+    if total <= 0:
+        return None
+    return round((total - (now[0] - last[0])) * 100.0 / total, 1)
+
+
+def _sys_cpu_name():
+    if sys.platform != 'win32':
+        return None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r'HARDWARE\DESCRIPTION\System\CentralProcessor\0') as k:
+            return str(winreg.QueryValueEx(k, 'ProcessorNameString')[0]).strip()
+    except Exception:
+        return None
+
+
+def _sys_mem():
+    if sys.platform != 'win32':
+        return None
+    import ctypes
+    class MSEX(ctypes.Structure):
+        _fields_ = [('len', ctypes.c_uint32), ('load', ctypes.c_uint32),
+                    ('total', ctypes.c_uint64), ('avail', ctypes.c_uint64),
+                    ('tp', ctypes.c_uint64), ('ap', ctypes.c_uint64),
+                    ('tv', ctypes.c_uint64), ('av', ctypes.c_uint64),
+                    ('ae', ctypes.c_uint64)]
+    m = MSEX()
+    m.len = ctypes.sizeof(MSEX)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)):
+        return None
+    return {'percent': m.load, 'total': m.total, 'avail': m.avail}
+
+
+def _sys_disks():
+    """仅固定磁盘（GetDriveTypeW==3），跳过光驱/网络盘/可移动盘"""
+    out = []
+    if sys.platform == 'win32':
+        import ctypes
+        import string
+        for ch in string.ascii_uppercase:
+            drive = ch + ':\\'
+            if not os.path.exists(drive):
+                continue
+            if ctypes.windll.kernel32.GetDriveTypeW(drive) != 3:
+                continue
+            try:
+                du = shutil.disk_usage(drive)
+            except Exception:
+                continue
+            pct = round(du.used * 100.0 / du.total, 1) if du.total else 0
+            out.append({'drive': ch + ':', 'total': du.total, 'free': du.free,
+                        'used': du.used, 'percent': pct})
+    else:
+        try:
+            du = shutil.disk_usage('/')
+            pct = round(du.used * 100.0 / du.total, 1) if du.total else 0
+            out.append({'drive': '/', 'total': du.total, 'free': du.free,
+                        'used': du.used, 'percent': pct})
+        except Exception:
+            pass
+    return out
+
+
+def _sys_public_ip():
+    """公网出口 IPv4/IPv6：成功缓存 10 分钟，失败缓存 60 秒（断网不反复卡超时）"""
+    now = time.time()
+    out = {}
+    for fam, url in (('v4', 'https://api-ipv4.ip.sb/ip'),
+                     ('v6', 'https://api-ipv6.ip.sb/ip')):
+        t, ip = _sys_pubip_cache.get(fam, (0.0, None))
+        if now - t < (600 if ip else 60):
+            out[fam] = ip
+            continue
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'curl/8.0'})
+            with urllib.request.urlopen(req, timeout=2) as r:
+                v = r.read().decode('utf-8', 'ignore').strip()
+            ip = v or None
+        except Exception:
+            ip = None
+        _sys_pubip_cache[fam] = (now, ip)
+        out[fam] = ip
+    return out['v4'], out['v6']
+
+
+def _sys_net():
+    """本机出口 IP + 外网 TCP 连接延迟（3 秒缓存，避免高频轮询反复探测）"""
+    global _sys_net_cache
+    if time.time() - _sys_net_cache['t'] < 3 and _sys_net_cache['data']:
+        return _sys_net_cache['data']
+    info = {'localIp': None, 'publicIp': None, 'publicIp6': None, 'latencyMs': None, 'ok': False}
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('223.5.5.5', 80))
+            info['localIp'] = s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        pass
+    t0 = time.time()
+    try:
+        s = socket.create_connection(('223.5.5.5', 443), timeout=1.2)
+        s.close()
+        info['latencyMs'] = round((time.time() - t0) * 1000, 1)
+        info['ok'] = True
+    except Exception:
+        pass
+    v4, v6 = _sys_public_ip()
+    info['publicIp'] = v4
+    info['publicIp6'] = v6
+    # 缓存时间戳记「完成时刻」而非开始时刻：探测约 2 秒，若记开始时刻，
+    # 浏览器 2 秒轮询的下一次请求到达时 age 已按开始时刻计算而恒 miss
+    _sys_net_cache = {'t': time.time(), 'data': info}
+    return info
+
+
+def _sys_uptime():
+    if sys.platform != 'win32':
+        return None
+    import ctypes
+    return int(ctypes.windll.kernel32.GetTickCount64() // 1000)
+
+
+def _sys_os_name():
+    if sys.platform == 'win32':
+        # Python 进程无 manifest 时 GetVersionEx 返回兼容假版本（6.2.9200），
+        # 须读注册表拿真实版本号；Win11 的 ProductName 仍是 "Windows 10 xxx"，按 build 区分
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                r'SOFTWARE\Microsoft\Windows NT\CurrentVersion') as k:
+                build = int(winreg.QueryValueEx(k, 'CurrentBuildNumber')[0])
+                name = str(winreg.QueryValueEx(k, 'ProductName')[0])
+            disp = ''
+            try:
+                disp = ' ' + str(winreg.QueryValueEx(k, 'DisplayVersion')[0])
+            except Exception:
+                pass
+            if build >= 22000:
+                name = name.replace('Windows 10', 'Windows 11')
+            return '%s%s (Build %d)' % (name, disp, build)
+        except Exception:
+            pass
+        v = sys.getwindowsversion()
+        nm = 'Windows 11' if v.build >= 22000 else 'Windows 10' if v.major == 10 else 'Windows %d' % v.major
+        return '%s (Build %d)' % (nm, v.build)
+    return sys.platform
+
+
+def collect_sysinfo():
+    return {
+        'cpu': {'percent': _sys_cpu_percent(), 'cores': os.cpu_count(), 'name': _sys_cpu_name()},
+        'mem': _sys_mem(),
+        'disks': _sys_disks(),
+        'os': _sys_os_name(),
+        'hostname': socket.gethostname(),
+        'python': sys.version.split()[0],
+        'uptimeSec': _sys_uptime(),
+        'serverUptimeSec': int(time.time() - _SERVER_START),
+        'net': _sys_net(),
+    }
+
 
 _clip_lock = threading.Lock()
 _clip_last_text = None            # 上一次记录的文本（去重）
@@ -1178,6 +1369,8 @@ class ProxyHandler(SimpleHTTPRequestHandler):
             self.handle_media_lrc(parsed)
         elif parsed.path == '/api/danmaku/list':
             self.handle_danmaku_list(parsed)
+        elif parsed.path == '/api/sysinfo':
+            self.handle_sysinfo()
         else:
             super().do_GET()
 
@@ -1507,6 +1700,10 @@ class ProxyHandler(SimpleHTTPRequestHandler):
         with _clip_lock:
             items = _clip_load()
         self.send_json(200, {"success": True, "data": items})
+
+    def handle_sysinfo(self):
+        """GET /api/sysinfo — 服务器电脑的 CPU/内存/磁盘/网络实时状态"""
+        self.send_json(200, {"success": True, "data": collect_sysinfo()})
 
     def handle_clipboard_action(self, body):
         """剪贴板操作：

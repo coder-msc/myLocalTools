@@ -2021,6 +2021,28 @@
             .media-ctx-menu, .mcm-sub { max-width: 86vw; }
         }
 
+        /* ---- 系统状态 Tab ---- */
+        .si-wrap { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
+        .si-col { flex:1 1 340px; min-width:0; display:flex; flex-direction:column; gap:14px; }
+        .si-card { background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+        .si-card-title { font-weight:600; font-size:15px; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+        .si-dot { width:10px; height:10px; border-radius:50%; background:#cbd5e1; display:inline-block; transition:all .3s; }
+        .si-dot.ok { background:#10b981; box-shadow:0 0 6px rgba(16,185,129,.6); }
+        .si-dot.warn { background:#f59e0b; }
+        .si-dot.bad { background:#ef4444; }
+        .si-bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+        .si-bar-label { width:44px; font-size:13px; color:#64748b; flex:0 0 auto; }
+        .si-bar { flex:1 1 auto; height:10px; background:#eef2f7; border-radius:5px; overflow:hidden; }
+        .si-bar-fill { height:100%; width:0; background:linear-gradient(90deg,#409eff,#69b7ff); border-radius:5px; transition:width .5s; }
+        .si-bar-fill.warn { background:linear-gradient(90deg,#f59e0b,#fbbf24); }
+        .si-bar-val { width:110px; text-align:right; font-size:13px; font-variant-numeric:tabular-nums; flex:0 0 auto; }
+        .si-disk-list { margin:10px 0 4px; }
+        .si-info-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:8px 14px; }
+        .si-info-item { display:flex; gap:8px; font-size:13px; min-width:0; line-height:1.5; }
+        .si-info-item .si-k { color:#64748b; flex:0 0 auto; }
+        .si-info-item .si-v { color:#1f2937; word-break:break-all; }
+        .si-speed-row { margin-top:12px; display:flex; align-items:center; gap:10px; }
+        .si-speed-result { font-size:13px; color:#10b981; }
     </style>
     <link rel="stylesheet" href="media.css">
 </head>
@@ -2037,6 +2059,7 @@
             <button class="tab-btn" data-tab="clipboard" id="clipTabBtn" onclick="switchTab('clipboard')" style="display:none;">📋 剪贴板</button>
             <button class="tab-btn" data-tab="danmaku" onclick="switchTab('danmaku')">📱 滚动提醒</button>
             <button class="tab-btn" data-tab="chat" onclick="switchTab('chat')">💬 公共频道</button>
+            <button class="tab-btn" data-tab="sysinfo" onclick="switchTab('sysinfo')">💻 系统状态</button>
             <button class="tab-btn" data-tab="music" id="musicTabBtn" onclick="switchTab('music')" style="display:none;">🎵 本地音乐</button>
             <button class="tab-btn" data-tab="video" id="videoTabBtn" onclick="switchTab('video')" style="display:none;">🎬 本地视频</button>
         </div>
@@ -2841,6 +2864,39 @@
             </div>
         </div>
 
+        <!-- Tab: 系统状态 -->
+        <div class="tab-content" id="tab-sysinfo">
+            <div class="si-wrap">
+                <div class="si-col">
+                    <div class="si-card">
+                        <div class="si-card-title">🖥 服务器电脑</div>
+                        <div class="si-bar-row"><span class="si-bar-label">CPU</span><div class="si-bar"><div class="si-bar-fill" id="siCpuBar"></div></div><span class="si-bar-val" id="siCpuVal">--</span></div>
+                        <div class="si-bar-row"><span class="si-bar-label">内存</span><div class="si-bar"><div class="si-bar-fill" id="siMemBar"></div></div><span class="si-bar-val" id="siMemVal">--</span></div>
+                        <div class="si-disk-list" id="siDiskList"></div>
+                        <div class="si-info-grid" id="siSysInfo"></div>
+                    </div>
+                    <div class="si-card">
+                        <div class="si-card-title">🌐 网络 <span class="si-dot" id="siNetDot"></span></div>
+                        <div class="si-info-grid" id="siNetInfo"></div>
+                        <div class="si-speed-row">
+                            <button class="btn-secondary btn-sm" onclick="siRunSpeedTest()">🚀 下载测速</button>
+                            <span class="si-speed-result" id="siSpeedResult"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="si-col">
+                    <div class="si-card">
+                        <div class="si-card-title">📱 当前浏览器/设备</div>
+                        <div class="si-info-grid" id="siBrowserInfo"></div>
+                    </div>
+                    <div class="si-card">
+                        <div class="si-card-title">⏱ 页面加载耗时</div>
+                        <div class="si-info-grid" id="siPerfInfo"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab 9: 滚动提醒 -->
         <div class="tab-content" id="tab-danmaku">
             <div class="dm-stage" id="dmStage">
@@ -3490,7 +3546,7 @@
         }
 
         function switchTab(tab) {
-            const tabs = ['parser', 'task', 'apitest', 'websocket', 'devtools', 'bookmarks', 'pomodoro', 'clipboard', 'danmaku', 'chat', 'music', 'video'];
+            const tabs = ['parser', 'task', 'apitest', 'websocket', 'devtools', 'bookmarks', 'pomodoro', 'clipboard', 'danmaku', 'chat', 'sysinfo', 'music', 'video'];
             // 按钮顺序可被拖拽定制，因此按 data-tab 匹配而不是按下标（下标会随拖拽错位）
             document.querySelectorAll('.tab-btn').forEach(b => {
                 b.classList.toggle('active', b.dataset.tab === tab);
@@ -3505,6 +3561,7 @@
             if (tab === 'chat') chatTabOn(); else chatTabOff();
             if (tab === 'music') musicTabOn(); else musicTabOff();
             if (tab === 'video') videoTabOn(); else videoTabOff();
+            if (tab === 'sysinfo') sysiTabOn(); else sysiTabOff();
         }
 
         // ---- Tab 拖拽排序（桌面端）：常用工具拖到顺手的位置 ----
@@ -8030,6 +8087,150 @@
         chatInit();
         musicInit();
         videoInit();
+
+        // ---- 系统状态 Tab ----
+        let sysiTimer = null;
+        let sysiBatteryText = '--';
+        let sysiSpeedBusy = false;
+
+        function siFmtSize(b) {
+            if (b == null) return '--';
+            const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+            return (b >= 100 ? Math.round(b) : +b.toFixed(1)) + ' ' + u[i];
+        }
+
+        function siFmtDur(sec) {
+            if (sec == null) return '--';
+            const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+            if (d) return d + ' 天 ' + h + ' 小时';
+            if (h) return h + ' 小时 ' + m + ' 分';
+            return m + ' 分钟';
+        }
+
+        function siRows(el, rows) {
+            if (!el) return;
+            el.innerHTML = rows.filter(r => r).map(r =>
+                `<div class="si-info-item"><span class="si-k">${r[0]}</span><span class="si-v ${r[2] || ''}">${r[1]}</span></div>`
+            ).join('');
+        }
+
+        function siSetBar(barId, valId, percent, naText, sub) {
+            const bar = document.getElementById(barId), val = document.getElementById(valId);
+            if (!bar || !val) return;
+            if (percent == null) {
+                bar.style.width = '0';
+                bar.classList.remove('warn');
+                val.textContent = naText || '--';
+                return;
+            }
+            const p = Math.min(100, Math.max(0, Math.round(percent)));
+            bar.style.width = p + '%';
+            bar.classList.toggle('warn', p >= 80);
+            val.textContent = p + '%' + (sub ? ' · ' + sub : '');
+        }
+
+        function sysiRender(d) {
+            siSetBar('siCpuBar', 'siCpuVal', d.cpu && d.cpu.percent != null ? d.cpu.percent : null, '测量中…');
+            siSetBar('siMemBar', 'siMemVal', d.mem ? d.mem.percent : null, '不支持',
+                d.mem ? siFmtSize(d.mem.total - d.mem.avail) + ' / ' + siFmtSize(d.mem.total) : '');
+            document.getElementById('siDiskList').innerHTML = (d.disks || []).map(k => {
+                const p = Math.min(100, Math.round(k.percent || 0));
+                return `<div class="si-bar-row"><span class="si-bar-label">${k.drive}</span><div class="si-bar"><div class="si-bar-fill ${p >= 90 ? 'warn' : ''}" style="width:${p}%"></div></div><span class="si-bar-val">${siFmtSize(k.used)} / ${siFmtSize(k.total)}</span></div>`;
+            }).join('') || '<div class="si-info-item"><span class="si-k">磁盘</span><span class="si-v">--</span></div>';
+            siRows(document.getElementById('siSysInfo'), [
+                ['操作系统', d.os || '--'],
+                ['主机名', d.hostname || '--'],
+                ['CPU 型号', d.cpu && d.cpu.name ? d.cpu.name : '--'],
+                ['CPU 核心', d.cpu && d.cpu.cores ? d.cpu.cores + ' 线程' : '--'],
+                ['开机时长', siFmtDur(d.uptimeSec)],
+                ['服务器已运行', siFmtDur(d.serverUptimeSec)],
+                ['Python', d.python || '--'],
+            ]);
+            const net = d.net || {};
+            const dot = document.getElementById('siNetDot');
+            dot.className = 'si-dot ' + (net.ok ? (net.latencyMs < 100 ? 'ok' : net.latencyMs < 300 ? 'warn' : 'bad') : 'bad');
+            siRows(document.getElementById('siNetInfo'), [
+                ['状态', net.ok ? '✅ 外网连通' : '❌ 无法连外网'],
+                ['本机 IP', net.localIp || '--'],
+                ['公网 IPv4', net.publicIp || '--'],
+                ['公网 IPv6', net.publicIp6 || '--'],
+                ['外网延迟', net.latencyMs != null ? net.latencyMs + ' ms' : '超时'],
+                ['在线状态', navigator.onLine ? '在线' : '离线'],
+            ]);
+            const conn = navigator.connection || {};
+            siRows(document.getElementById('siBrowserInfo'), [
+                ['网络类型', conn.effectiveType ? conn.effectiveType.toUpperCase() : '--'],
+                ['预估下行', conn.downlink != null ? conn.downlink + ' Mbps' : '--'],
+                ['往返延迟', conn.rtt != null ? conn.rtt + ' ms' : '--'],
+                ['CPU 线程', navigator.hardwareConcurrency || '--'],
+                ['屏幕', screen.width + '×' + screen.height + ' @ ' + devicePixelRatio + 'x'],
+                ['语言', navigator.language || '--'],
+                ['电池', sysiBatteryText],
+            ]);
+            sysiRenderPerf();
+        }
+
+        if (navigator.getBattery) {
+            navigator.getBattery().then(b => {
+                const t = () => { sysiBatteryText = Math.round(b.level * 100) + '%' + (b.charging ? ' ⚡充电中' : ''); };
+                t();
+                b.addEventListener('levelchange', t);
+                b.addEventListener('chargingchange', t);
+            }).catch(() => {});
+        }
+
+        function sysiRenderPerf() {
+            const nav = performance.getEntriesByType('navigation')[0];
+            if (!nav) return;
+            siRows(document.getElementById('siPerfInfo'), [
+                ['DNS 解析', nav.domainLookupEnd - nav.domainLookupStart > 0 ? (nav.domainLookupEnd - nav.domainLookupStart).toFixed(0) + ' ms' : '缓存/复用'],
+                ['TCP 连接', nav.connectEnd - nav.connectStart > 0 ? (nav.connectEnd - nav.connectStart).toFixed(0) + ' ms' : '复用'],
+                ['首字节 TTFB', nav.responseStart > 0 ? nav.responseStart.toFixed(0) + ' ms' : '--'],
+                ['DOM Ready', nav.domContentLoadedEventEnd > 0 ? nav.domContentLoadedEventEnd.toFixed(0) + ' ms' : '--'],
+                ['完全加载', nav.loadEventEnd > 0 ? nav.loadEventEnd.toFixed(0) + ' ms' : '加载中…'],
+                ['传输大小', nav.transferSize != null ? siFmtSize(nav.transferSize) : '--'],
+            ]);
+        }
+
+        async function sysiFetch() {
+            try {
+                const r = await fetch('/api/sysinfo');
+                const j = await r.json();
+                if (j && j.success) sysiRender(j.data);
+            } catch (e) { /* 服务器不可达时保留上次数据 */ }
+        }
+
+        function sysiTabOn() {
+            sysiFetch();
+            sysiTimer = setInterval(sysiFetch, 2000);
+        }
+
+        function sysiTabOff() {
+            clearInterval(sysiTimer);
+            sysiTimer = null;
+        }
+
+        async function siRunSpeedTest() {
+            if (sysiSpeedBusy) return;
+            sysiSpeedBusy = true;
+            const el = document.getElementById('siSpeedResult');
+            el.textContent = '测速中…';
+            el.style.color = '#64748b';
+            try {
+                const t0 = performance.now();
+                const r = await fetch('https://speed.cloudflare.com/__down?bytes=10000000', { cache: 'no-store' });
+                await r.blob();
+                const mbps = 10000000 * 8 / ((performance.now() - t0) / 1000) / 1e6;
+                el.textContent = mbps.toFixed(1) + ' Mbps（Cloudflare 下载）';
+                el.style.color = '#10b981';
+            } catch (e) {
+                el.textContent = '测速失败（可能无外网）';
+                el.style.color = '#ef4444';
+            }
+            sysiSpeedBusy = false;
+        }
 
         loadCalcHistory();
         startTsClock();
