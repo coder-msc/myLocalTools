@@ -1,0 +1,32 @@
+{
+  "tasks": [
+    {
+      "id": "pm_mtrbc88f5blto",
+      "name": "完成这个项目的开发工作",
+      "done": false,
+      "pomodoros": 1,
+      "createdAt": 1788789930927
+    }
+  ],
+  "history": [
+    {
+      "date": "2026-09-07",
+      "count": 1,
+      "minutes": 25
+    },
+    {
+      "date": "2026-09-03",
+      "count": 1,
+      "minutes": 25
+    },
+    {
+      "date": "2026-09-01",
+      "count": 2,
+      "minutes": 50
+    }
+  ],
+  "settings": {
+    "focus": 25,
+    "break": 5
+  }
+}

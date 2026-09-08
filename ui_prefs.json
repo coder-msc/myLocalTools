@@ -1,0 +1,16 @@
+{
+  "tabOrder": [
+    "video",
+    "music",
+    "chat",
+    "devtools",
+    "parser",
+    "task",
+    "pomodoro",
+    "apitest",
+    "clipboard",
+    "websocket",
+    "bookmarks",
+    "danmaku"
+  ]
+}

@@ -9,15 +9,15 @@ __pycache__/
 .trae/
 
 # ---- 运行时个人数据（本地状态，不入库；程序首次运行会自动重建） ----
-media_data/
-chat_files/
-clipboard_files/
-bookmarks.json
-chat.json
-clipboard.json
-pomodoro.json
-whiteboard.json
-saved_requests.json
-pet_state.json
-sprite_choice.json
-ui_prefs.json
+# media_data/
+# chat_files/
+# clipboard_files/
+# bookmarks.json
+# chat.json
+# clipboard.json
+# pomodoro.json
+# whiteboard.json
+# saved_requests.json
+# pet_state.json
+# sprite_choice.json
+# ui_prefs.json
