@@ -1,0 +1,26 @@
+{
+  "categories": [
+    {
+      "id": "default",
+      "name": "未分类"
+    },
+    {
+      "id": "bm_mt9qp1bvn9hnq",
+      "name": "平台工具"
+    },
+    {
+      "id": "bm_mta1nbebxjdg2",
+      "name": "个人备忘"
+    }
+  ],
+  "bookmarks": [
+    {
+      "id": "bm_mt9ub7bd5z4rj",
+      "name": "飞书MCP配置",
+      "url": "https://open.feishu.cn/page/mcp/7628862846292004033",
+      "icon": "",
+      "categoryId": "bm_mt9qp1bvn9hnq",
+      "createdAt": 1787733404617
+    }
+  ]
+}
