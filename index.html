@@ -3093,7 +3093,9 @@
                             <video id="videoPlayerEl" preload="metadata" playsinline></video>
                             <div class="danmaku-layer" id="danmakuLayer"></div>
                             <button class="video-center-toggle" id="videoCenterToggle" title="播放/暂停"></button>
-                            <div class="video-rate-badge" id="videoRateBadge">3x 快进中 »</div>
+                            <div class="video-rate-badge" id="videoRateBadge">2x 快进中 »</div>
+                            <div class="video-seek-badge left" id="videoSeekBadgeL">« 快退 10s</div>
+                            <div class="video-seek-badge right" id="videoSeekBadgeR">快进 10s »</div>
                             <div class="video-spinner" id="videoSpinner"></div>
                             <div class="video-top-bar" id="videoTopBar"><span id="videoPlayerTitle"></span><button class="video-top-close" onclick="videoClosePlayer()" title="关闭播放器"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" fill="currentColor"/></svg></button></div>
                             <div class="video-ctrl-bar" id="videoCtrlBar">
@@ -3151,9 +3153,10 @@
                                 <button class="dm-mode-btn" data-mode="4">底部</button>
                             </div>
                             <input type="color" id="dmColor" value="#ffffff" title="弹幕颜色">
-                            <input type="text" id="dmInput" class="dm-input" maxlength="100" placeholder="发个弹幕见证当下 (Enter 发送)">
+                            <input type="text" id="vdmInput" class="dm-input" maxlength="100" placeholder="发个弹幕见证当下 (Enter 发送)">
                             <button class="dm-send-btn" id="dmSendBtn">发送</button>
                             <button class="dm-icon-btn" id="dmImportBtn" title="导入B站弹幕 XML">📥</button>
+                            <button class="dm-icon-btn" id="dmTplBtn" title="下载弹幕模板 XML">📋</button>
                             <button class="dm-icon-btn" id="dmSettingBtn" title="弹幕设置">⚙</button>
                             <input type="file" id="dmImportFile" accept=".xml,text/xml" style="display:none">
                             <div class="dm-setting-panel" id="dmSettingPanel" style="display:none;">
@@ -3161,10 +3164,17 @@
                                 <div class="dm-set-row"><span class="dm-set-label">显示区域</span>
                                     <select id="dmArea"><option value="0.25">1/4 屏</option><option value="0.5">1/2 屏</option><option value="0.75">3/4 屏</option><option value="1" selected>全屏</option></select></div>
                                 <div class="dm-set-row"><span class="dm-set-label">弹幕速度</span>
-                                    <select id="dmSpeed"><option value="11">慢</option><option value="8" selected>标准</option><option value="5">快</option></select></div>
+                                    <select id="vdmSpeedSel"><option value="11">慢</option><option value="8" selected>标准</option><option value="5">快</option></select></div>
                                 <div class="dm-set-head">本视频弹幕 <span id="dmManageCount"></span></div>
                                 <div class="dm-manage-list" id="dmManageList"></div>
                             </div>
+                        </div>
+                        <div class="dm-list-panel" id="dmListPanel">
+                            <div class="dm-list-head" id="dmListHead">
+                                <span class="dm-list-title">💬 弹幕列表 <span id="dmListCount"></span></span>
+                                <button class="dm-list-toggle" id="dmListToggle">▾</button>
+                            </div>
+                            <div class="dm-list-body" id="dmListBody"></div>
                         </div>
                     </div>
                     <div class="video-grid" id="videoGrid"></div>
