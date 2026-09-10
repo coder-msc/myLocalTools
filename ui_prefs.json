@@ -11,6 +11,7 @@
     "clipboard",
     "websocket",
     "bookmarks",
-    "danmaku"
+    "danmaku",
+    "sysinfo"
   ]
 }
