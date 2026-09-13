@@ -1380,9 +1380,37 @@
             document.getElementById('videoPlayBtn').addEventListener('click', videoTogglePlay);
             document.getElementById('videoCenterToggle').addEventListener('click', videoTogglePlay);
 
-            // 点击画面切换播放（长按 3x 结束后抑制一次），双击全屏
-            stage.addEventListener('click', (e) => { if (e.target === v && !videoSuppressClick) videoTogglePlay(); });
+            // 点击画面切换播放（长按 2x 结束后抑制一次），双击全屏；
+            // 触屏设备（hover:none + coarse）：双击左/右侧 ±10s 快退快进（Twitter/B站式），桌面双击保留全屏
+            let vtLastTime = 0, vtLastX = 0;
+            stage.addEventListener('click', (e) => {
+                if (e.target !== v || videoSuppressClick) return;
+                if (!window.matchMedia('(hover: none) and (pointer: coarse)').matches) { videoTogglePlay(); return; }
+                const now = Date.now();
+                if (now - vtLastTime < 350) {
+                    // 双击：先把第一次 tap 切换的播放状态切回来（两次 click 抵消，播放不中断），再 seek ±10s
+                    vtLastTime = 0;
+                    videoTogglePlay();
+                    if (v.duration && isFinite(v.duration)) {
+                        const rect = stage.getBoundingClientRect();
+                        const toLeft = (e.clientX - rect.left) < rect.width / 2;
+                        v.currentTime = Math.min(v.duration, Math.max(0, v.currentTime + (toLeft ? -10 : 10)));
+                        const badge = document.getElementById(toLeft ? 'videoSeekBadgeL' : 'videoSeekBadgeR');
+                        badge.classList.remove('show');
+                        void badge.offsetWidth; // 重启动画
+                        badge.classList.add('show');
+                        setTimeout(() => badge.classList.remove('show'), 650);
+                    }
+                    videoShowControls();
+                    return;
+                }
+                vtLastTime = now;
+                vtLastX = e.clientX;
+                videoTogglePlay();
+            });
             stage.addEventListener('dblclick', (e) => { if (e.target === v) videoToggleFullscreen(); });
+            // 长按倍速时抑制系统原生菜单（iOS 长按视频弹播放菜单 / Android 弹下载菜单）
+            stage.addEventListener('contextmenu', (e) => { if (e.target === v) e.preventDefault(); });
 
             // 长按画面 3 倍速快进（B站特色交互）
             let lpTimer = null, lpActive = false;
@@ -1390,7 +1418,7 @@
                 if (e.button !== 0 || e.target !== v || !v.src || v.paused || v.ended) return;
                 lpTimer = setTimeout(() => {
                     lpActive = true;
-                    v.playbackRate = 3;
+                    v.playbackRate = 2;
                     document.getElementById('videoRateBadge').classList.add('show');
                 }, 450);
             });
@@ -1815,7 +1843,7 @@
             vdmLoadedFor = fileId;
             vdmList = []; vdmCursor = 0; vdmClearActive();
             fetch('/api/danmaku/list?id=' + fileId).then(r => r.json()).then(j => {
-                if (j.success && vdmLoadedFor === fileId) { vdmList = j.data || []; vdmSyncCursor(); }
+                if (j.success && vdmLoadedFor === fileId) { vdmList = j.data || []; vdmSyncCursor(); vdmRenderManageList(); }
             }).catch(() => {});
         }
 
@@ -1924,7 +1952,7 @@
 
         function vdmInitUI() {
             const v = document.getElementById('videoPlayerEl');
-            const input = document.getElementById('dmInput');
+            const input = document.getElementById('vdmInput');
             const sendBtn = document.getElementById('dmSendBtn');
             const settingBtn = document.getElementById('dmSettingBtn');
             const panel = document.getElementById('dmSettingPanel');
@@ -1980,12 +2008,29 @@
             const area = document.getElementById('dmArea');
             area.value = String(vdmSettings.area);
             area.addEventListener('change', () => { vdmSettings.area = parseFloat(area.value); vdmPersistSettings(); vdmApplyLayerSize(); vdmClearActive(); });
-            const speed = document.getElementById('dmSpeed');
+            const speed = document.getElementById('vdmSpeedSel');
             speed.value = String(vdmSettings.speed);
             speed.addEventListener('change', () => { vdmSettings.speed = parseFloat(speed.value); vdmPersistSettings(); });
 
             // 导入 B站弹幕 XML
             document.getElementById('dmImportBtn').addEventListener('click', () => document.getElementById('dmImportFile').click());
+            document.getElementById('dmTplBtn').addEventListener('click', vdmDownloadTemplate);
+            // 播放器下方常驻弹幕列表：点击条目跳转进度 + 折叠状态记忆
+            const dmListPanel = document.getElementById('dmListPanel');
+            if (dmListPanel) {
+                if (localStorage.getItem('dmListCollapsed') === '1') dmListPanel.classList.add('collapsed');
+                document.getElementById('dmListHead').addEventListener('click', () => {
+                    const collapsed = dmListPanel.classList.toggle('collapsed');
+                    localStorage.setItem('dmListCollapsed', collapsed ? '1' : '0');
+                });
+                document.getElementById('dmListBody').addEventListener('click', (e) => {
+                    const item = e.target.closest('.dm-list-item');
+                    if (!item) return;
+                    const v = document.getElementById('videoPlayerEl');
+                    const t = parseFloat(item.dataset.dmtime);
+                    if (isFinite(t)) { v.currentTime = t; videoShowControls(); }
+                });
+            }
             document.getElementById('dmImportFile').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file) vdmImport(file);
@@ -2013,7 +2058,7 @@
         }
 
         function vdmSend() {
-            const input = document.getElementById('dmInput');
+            const input = document.getElementById('vdmInput');
             const text = input.value.trim();
             const v = document.getElementById('videoPlayerEl');
             if (!text || !videoCurrentId) return;
@@ -2034,8 +2079,31 @@
                 .finally(() => sendBtn.disabled = false);
         }
 
+        function vdmDownloadTemplate() {
+            const xml = [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<i>',
+                '  <!-- B站弹幕 XML 模板：复制 <d> 行修改内容后即可导入 -->',
+                '  <!-- p 属性逗号分隔：第1个=出现时间(秒，可小数) 第2个=类型(1滚动 4底部 5顶部) -->',
+                '  <!-- 第3个=字号(常用25) 第4个=颜色(十进制：16777215白 16711680红 65280绿 255蓝 16776960黄) -->',
+                '  <!-- 第5个起为内部字段，填 0 即可 -->',
+                '  <d p="5.0,1,25,16777215,0,0,0,0">5 秒出现的白色滚动弹幕</d>',
+                '  <d p="10.5,1,25,16776960,0,0,0,0">黄色滚动弹幕示例</d>',
+                '  <d p="15.0,5,25,16711680,0,0,0,0">红色顶部弹幕示例</d>',
+                '  <d p="20.0,4,25,65280,0,0,0,0">绿色底部弹幕示例</d>',
+                '</i>'
+            ].join('\n');
+            const blob = new Blob([xml], { type: 'text/xml;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'danmaku-template.xml';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            showToast('模板已下载，照格式填写后点 📥 导入', 'info', 2500);
+        }
+
         function vdmImport(file) {
-            if (!videoCurrentId) return;
+            if (!videoCurrentId) { showToast('请先打开一个视频再导入弹幕', 'error'); return; }
             showToast('正在导入弹幕…', 'info', 1500);
             const fd = new FormData();
             fd.append('id', videoCurrentId);
@@ -2056,9 +2124,13 @@
         function vdmRenderManageList() {
             const box = document.getElementById('dmManageList');
             if (!box) return;
+            const emptyText = '还没有弹幕，发一条或导入 B站 XML（点 📋 下载模板）';
             document.getElementById('dmManageCount').textContent = vdmList.length ? `(${vdmList.length})` : '';
+            const listBody = document.getElementById('dmListBody');
+            if (listBody) document.getElementById('dmListCount').textContent = vdmList.length ? `(${vdmList.length})` : '';
             if (!vdmList.length) {
-                box.innerHTML = '<div class="dm-manage-empty">还没有弹幕，发一条或导入 B站 XML</div>';
+                box.innerHTML = `<div class="dm-manage-empty">${emptyText}</div>`;
+                if (listBody) listBody.innerHTML = `<div class="dm-list-empty">${emptyText}</div>`;
                 return;
             }
             box.innerHTML = vdmList.map(d => `
@@ -2066,6 +2138,11 @@
                     <span class="dm-manage-time">${videoPadTime(d.time)}</span>
                     <span class="dm-manage-text" ${d.color && d.color.toLowerCase() !== '#ffffff' ? `style="color:${vdmEscape(d.color)}"` : ''}>${vdmEscape(d.text)}</span>
                     <button class="dm-manage-del" data-dmid="${d.id}" title="删除">×</button>
+                </div>`).join('');
+            if (listBody) listBody.innerHTML = vdmList.map(d => `
+                <div class="dm-list-item" data-dmtime="${d.time}">
+                    <span class="dm-list-item-time">${videoPadTime(d.time)}</span>
+                    <span class="dm-list-item-text" ${d.color && d.color.toLowerCase() !== '#ffffff' ? `style="color:${vdmEscape(d.color)}"` : ''}>${vdmEscape(d.text)}</span>
                 </div>`).join('');
         }
 
