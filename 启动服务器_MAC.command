@@ -1,10 +1,10 @@
 #!/bin/bash
 # ============================================================
 #   接口调试工具箱 DevToolbox - 启动服务器 (macOS 版)
-#   对应 Windows 版的 启动服务器.bat
+#   对应 Windows 版的 启动服务器_WIN.bat
 #
 #   用法（首次使用需赋一次执行权限，之后双击即可启动）:
-#     chmod +x 启动服务器.command
+#     chmod +x 启动服务器_MAC.command
 #
 #   说明: .command 是 macOS 的"可双击脚本"格式，Finder 里双击
 #         会自动打开终端执行，等价于 Windows 双击 .bat。

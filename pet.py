@@ -25,7 +25,7 @@
     （snip 模式下 Esc 仅退出 snip 不关窗）
   · Esc / 右键取消；截图会被服务器剪贴板历史自动收录
 
-启动：双击「启动宠物.bat」或运行 `pythonw pet.py`。
+启动：双击「启动宠物_WIN.bat」或运行 `pythonw pet.py`。
 """
 import ctypes
 import json
